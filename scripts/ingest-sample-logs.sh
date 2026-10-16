@@ -9,6 +9,10 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Source .env if present
 if [[ -f "${REPO_ROOT}/.env" ]]; then
+    # Auto-repair unquoted OPENSEARCH_JAVA_OPTS if present
+    if grep -q '^OPENSEARCH_JAVA_OPTS=[^"].*[[:space:]]' "${REPO_ROOT}/.env"; then
+        sed -i 's/^OPENSEARCH_JAVA_OPTS=\(.*\)$/OPENSEARCH_JAVA_OPTS="\1"/' "${REPO_ROOT}/.env" 2>/dev/null || true
+    fi
     # shellcheck disable=SC1091
     source "${REPO_ROOT}/.env"
 fi
