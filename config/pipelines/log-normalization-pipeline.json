@@ -1,0 +1,118 @@
+{
+  "description": "Normalization pipeline for Google Cloud Platform (GCP) Cloud Audit Logs",
+  "processors": [
+    {
+      "set": {
+        "field": "cloud.provider",
+        "value": "gcp",
+        "override": false
+      }
+    },
+    {
+      "date": {
+        "field": "timestamp",
+        "target_field": "@timestamp",
+        "formats": ["ISO8601", "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", "yyyy-MM-dd'T'HH:mm:ss'Z'"],
+        "ignore_failure": true
+      }
+    },
+    {
+      "set": {
+        "field": "gcp.service_name",
+        "value": "{{{protoPayload.serviceName}}}",
+        "ignore_empty_value": true
+      }
+    },
+    {
+      "set": {
+        "field": "service.name",
+        "value": "{{{protoPayload.serviceName}}}",
+        "ignore_empty_value": true
+      }
+    },
+    {
+      "set": {
+        "field": "gcp.method_name",
+        "value": "{{{protoPayload.methodName}}}",
+        "ignore_empty_value": true
+      }
+    },
+    {
+      "set": {
+        "field": "event.action",
+        "value": "{{{protoPayload.methodName}}}",
+        "ignore_empty_value": true
+      }
+    },
+    {
+      "set": {
+        "field": "gcp.principal",
+        "value": "{{{protoPayload.authenticationInfo.principalEmail}}}",
+        "ignore_empty_value": true
+      }
+    },
+    {
+      "set": {
+        "field": "user.name",
+        "value": "{{{protoPayload.authenticationInfo.principalEmail}}}",
+        "ignore_empty_value": true
+      }
+    },
+    {
+      "set": {
+        "field": "actor.user",
+        "value": "{{{protoPayload.authenticationInfo.principalEmail}}}",
+        "ignore_empty_value": true
+      }
+    },
+    {
+      "set": {
+        "field": "gcp.caller_ip",
+        "value": "{{{protoPayload.requestMetadata.callerIp}}}",
+        "ignore_empty_value": true
+      }
+    },
+    {
+      "set": {
+        "field": "source.ip",
+        "value": "{{{protoPayload.requestMetadata.callerIp}}}",
+        "ignore_empty_value": true
+      }
+    },
+    {
+      "set": {
+        "field": "gcp.resource_name",
+        "value": "{{{protoPayload.resourceName}}}",
+        "ignore_empty_value": true
+      }
+    },
+    {
+      "set": {
+        "field": "resource.name",
+        "value": "{{{protoPayload.resourceName}}}",
+        "ignore_empty_value": true
+      }
+    },
+    {
+      "set": {
+        "field": "gcp.status_code",
+        "value": "{{{protoPayload.status.code}}}",
+        "ignore_empty_value": true
+      }
+    },
+    {
+      "set": {
+        "field": "log.level",
+        "value": "{{{severity}}}",
+        "ignore_empty_value": true
+      }
+    },
+    {
+      "script": {
+        "lang": "painless",
+        "source": "if (ctx.protoPayload != null && ctx.protoPayload.status != null && ctx.protoPayload.status.code != null) { ctx['event.outcome'] = (ctx.protoPayload.status.code == 0) ? 'success' : 'failure'; } else { ctx['event.outcome'] = 'unknown'; }",
+        "ignore_failure": true
+      }
+    }
+  ]
+}

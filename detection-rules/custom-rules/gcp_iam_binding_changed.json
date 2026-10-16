@@ -1,0 +1,32 @@
+{
+  "title": "GCP IAM Role Binding Modification",
+  "id": "a1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c81",
+  "description": "Detects changes to GCP IAM policies (SetIamPolicy) that modify role bindings or grant elevated privileges.",
+  "status": "experimental",
+  "author": "Security Architecture Team",
+  "date": "2026/10/16",
+  "references": [
+    "https://cloud.google.com/iam/docs/understanding-audit-logging",
+    "https://attack.mitre.org/techniques/T1098/"
+  ],
+  "tags": [
+    "attack.persistence",
+    "attack.privilege_escalation",
+    "attack.t1098"
+  ],
+  "logsource": {
+    "product": "others_application",
+    "service": "gcp_audit"
+  },
+  "detection": {
+    "selection": {
+      "gcp.method_name": "SetIamPolicy"
+    },
+    "condition": "selection"
+  },
+  "level": "critical",
+  "falsepositives": [
+    "Legitimate infrastructure-as-code deployments (Terraform, Pulumi)",
+    "Scheduled IAM governance and access reviews"
+  ]
+}

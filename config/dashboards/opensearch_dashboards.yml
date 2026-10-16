@@ -1,0 +1,18 @@
+# ==============================================================================
+# OpenSearch Dashboards Configuration
+# ==============================================================================
+server.name: gcp-audit-dashboards
+server.host: "0.0.0.0"
+server.port: 5601
+
+opensearch.hosts: ["http://opensearch:9200"]
+opensearch.ssl.verificationMode: none
+
+# Security plugin settings matching OpenSearch core
+opensearch_security.enabled: false
+
+# Brand / Title settings
+opensearchDashboards.branding:
+  logo:
+    defaultUrl: ""
+  title: "GCP Security Analytics Lab"

@@ -1,0 +1,17 @@
+# ==============================================================================
+# OpenSearch Single-Node Configuration for Educational Security Lab
+# ==============================================================================
+cluster.name: gcp-audit-security-lab
+node.name: opensearch-lab-01
+
+# Single-node configuration for educational/local practice
+discovery.type: single-node
+network.host: 0.0.0.0
+
+# Security plugin settings for local demonstration mode
+# NOTE: Security plugin is disabled to eliminate TLS/credential overhead for beginners.
+# In production, this MUST be enabled with mutual TLS and RBAC.
+plugins.security.disabled: true
+
+# Compatibility settings
+compatibility.override_main_response_version: false

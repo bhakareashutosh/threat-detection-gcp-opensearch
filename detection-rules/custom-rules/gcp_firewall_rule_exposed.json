@@ -1,0 +1,32 @@
+{
+  "title": "GCP Firewall Ingress Rule Created or Modified",
+  "id": "a1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c83",
+  "description": "Detects the creation or insertion of GCP Compute Engine firewall rules, potentially exposing workloads or management ports directly to the internet.",
+  "status": "experimental",
+  "author": "Security Architecture Team",
+  "date": "2026/10/16",
+  "references": [
+    "https://cloud.google.com/vpc/docs/firewalls",
+    "https://attack.mitre.org/techniques/T1562/007/"
+  ],
+  "tags": [
+    "attack.defense_evasion",
+    "attack.initial_access",
+    "attack.t1562.007"
+  ],
+  "logsource": {
+    "product": "others_application",
+    "service": "gcp_audit"
+  },
+  "detection": {
+    "selection": {
+      "gcp.method_name": "v1.compute.firewalls.insert"
+    },
+    "condition": "selection"
+  },
+  "level": "high",
+  "falsepositives": [
+    "Authorized network changes by Cloud Network Engineering",
+    "Automated load balancer ingress configuration"
+  ]
+}

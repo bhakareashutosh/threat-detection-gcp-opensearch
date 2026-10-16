@@ -1,0 +1,130 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "index.default_pipeline": "gcp-audit-logs-normalization"
+  },
+  "mappings": {
+    "properties": {
+      "@timestamp": { "type": "date" },
+      "timestamp": { "type": "date" },
+      "insertId": { "type": "keyword" },
+      "logName": { "type": "keyword" },
+      "severity": { "type": "keyword" },
+      "log_type": { "type": "keyword" },
+
+      "cloud": {
+        "properties": {
+          "provider": { "type": "keyword" },
+          "project": {
+            "properties": {
+              "id": { "type": "keyword" }
+            }
+          }
+        }
+      },
+
+      "service": {
+        "properties": {
+          "name": { "type": "keyword" }
+        }
+      },
+
+      "event": {
+        "properties": {
+          "action": { "type": "keyword" },
+          "outcome": { "type": "keyword" },
+          "category": { "type": "keyword" }
+        }
+      },
+
+      "user": {
+        "properties": {
+          "name": { "type": "keyword" }
+        }
+      },
+
+      "actor": {
+        "properties": {
+          "user": { "type": "keyword" }
+        }
+      },
+
+      "source": {
+        "properties": {
+          "ip": { "type": "ip" }
+        }
+      },
+
+      "resource": {
+        "properties": {
+          "type": { "type": "keyword" },
+          "name": { "type": "keyword" },
+          "labels": {
+            "properties": {
+              "project_id": { "type": "keyword" },
+              "zone": { "type": "keyword" },
+              "instance_id": { "type": "keyword" }
+            }
+          }
+        }
+      },
+
+      "gcp": {
+        "properties": {
+          "service_name": { "type": "keyword" },
+          "method_name": { "type": "keyword" },
+          "principal": { "type": "keyword" },
+          "caller_ip": { "type": "keyword" },
+          "resource_name": { "type": "keyword" },
+          "status_code": { "type": "integer" }
+        }
+      },
+
+      "protoPayload": {
+        "properties": {
+          "@type": { "type": "keyword" },
+          "serviceName": { "type": "keyword" },
+          "methodName": { "type": "keyword" },
+          "resourceName": { "type": "keyword" },
+          "authenticationInfo": {
+            "properties": {
+              "principalEmail": { "type": "keyword" },
+              "callerIp": { "type": "keyword" },
+              "callerSuppliedUserAgent": {
+                "type": "text",
+                "fields": {
+                  "keyword": { "type": "keyword", "ignore_above": 256 }
+                }
+              }
+            }
+          },
+          "requestMetadata": {
+            "properties": {
+              "callerIp": { "type": "keyword" },
+              "callerNetwork": { "type": "keyword" }
+            }
+          },
+          "status": {
+            "properties": {
+              "code": { "type": "integer" },
+              "message": { "type": "text" }
+            }
+          },
+          "serviceData": {
+            "type": "object",
+            "enabled": true
+          },
+          "request": {
+            "type": "object",
+            "enabled": true
+          },
+          "response": {
+            "type": "object",
+            "enabled": true
+          }
+        }
+      }
+    }
+  }
+}
