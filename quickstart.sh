@@ -247,6 +247,18 @@ check_dependencies() {
             echo -e "  ${ICON_CHECK} Kernel vm.max_map_count is optimal: ${C_GREEN}${MMAP_VAL}${RESET}"
         fi
     fi
+
+    # 5. Check System RAM and determine safe JVM heap default
+    DEFAULT_HEAP="1g"
+    if [[ -f /proc/meminfo ]]; then
+        TOTAL_RAM_KB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}')
+        if [[ -n "${TOTAL_RAM_KB}" && "${TOTAL_RAM_KB}" -lt 3000000 ]]; then
+            DEFAULT_HEAP="512m"
+            echo -e "  ${ICON_INFO} System RAM is < 3GB ($((TOTAL_RAM_KB / 1024))MB). Defaulting JVM heap to safe lightweight size: ${C_CYAN}${DEFAULT_HEAP}${RESET}"
+        else
+            echo -e "  ${ICON_CHECK} System RAM detected: ${C_GREEN}$((TOTAL_RAM_KB / 1024))MB${RESET}"
+        fi
+    fi
 }
 
 # ------------------------------------------------------------------------------
@@ -286,7 +298,7 @@ collect_user_inputs() {
         prompt_user "OpenSearch Target Index" "gcp-audit-logs-demo" INDEX_NAME
         prompt_user "OpenSearch API Port" "9200" OPENSEARCH_PORT
         prompt_user "OpenSearch Dashboards Port" "5601" DASHBOARDS_PORT
-        prompt_user "JVM Heap Allocation" "1g" JVM_HEAP
+        prompt_user "JVM Heap Allocation (512m recommended for low RAM)" "${DEFAULT_HEAP:-512m}" JVM_HEAP
     fi
 
     # Save to .env file
@@ -300,7 +312,8 @@ OPENSEARCH_VERSION=2.18.0
 OPENSEARCH_DASHBOARDS_VERSION=2.18.0
 OPENSEARCH_PORT=${OPENSEARCH_PORT:-9200}
 OPENSEARCH_DASHBOARDS_PORT=${DASHBOARDS_PORT:-5601}
-OPENSEARCH_JAVA_OPTS=-Xms${JVM_HEAP:-1g} -Xmx${JVM_HEAP:-1g}
+OPENSEARCH_JAVA_OPTS=-Xms${JVM_HEAP:-512m} -Xmx${JVM_HEAP:-512m}
+BOOTSTRAP_MEMORY_LOCK=false
 OPENSEARCH_HOST=http://localhost:${OPENSEARCH_PORT:-9200}
 OPENSEARCH_DASHBOARDS_HOST=http://localhost:${DASHBOARDS_PORT:-5601}
 DISABLE_SECURITY_PLUGIN=true
@@ -324,38 +337,72 @@ EOF
 }
 
 # ------------------------------------------------------------------------------
-# Phase 3: Launch OpenSearch Cluster
+# Phase 3: Launch OpenSearch Cluster & Dashboards
 # ------------------------------------------------------------------------------
 
 start_cluster() {
-    print_step "3" "6" "Starting OpenSearch 2.18.0 Cluster"
+    print_step "3" "6" "Starting OpenSearch 2.18.0 Cluster & Dashboards"
 
-    echo -e "  ${ICON_INFO} Launching OpenSearch and Dashboards containers in detached mode..."
+    echo -e "  ${ICON_INFO} Checking container status and launching services in detached mode..."
 
-    # Check if container is already running
+    local os_ready=false
+    local dash_ready=false
+
+    # Check if OpenSearch is already responding
     if curl -s -f "http://localhost:${OPENSEARCH_PORT:-9200}/_cluster/health" &>/dev/null; then
         echo -e "  ${ICON_CHECK} OpenSearch is already running on port ${OPENSEARCH_PORT:-9200}!"
-        return 0
+        os_ready=true
     fi
 
-    # Launch using compose or podman/docker
-    if [[ -n "${COMPOSE_CMD}" ]] && [[ -f "${REPO_ROOT}/compose.yaml" ]]; then
-        ${COMPOSE_CMD} up -d >/tmp/compose-up.log 2>&1 &
-        spin_wait $! "Starting containers via ${COMPOSE_CMD}..."
-    else
-        # Fallback to direct container run
-        ${CONTAINER_RUNTIME} run -d --name opensearch-node \
-            -p ${OPENSEARCH_PORT:-9200}:9200 -p 9600:9600 \
-            -e "discovery.type=single-node" \
-            -e "OPENSEARCH_JAVA_OPTS=-Xms${JVM_HEAP:-1g} -Xmx${JVM_HEAP:-1g}" \
-            -e "plugins.security.disabled=true" \
-            -e "DISABLE_INSTALL_DEMO_CONFIG=true" \
-            docker.io/opensearchproject/opensearch:2.18.0 >/dev/null 2>&1 &
-        spin_wait $! "Starting OpenSearch node container..."
+    # Check if Dashboards is already responding
+    if curl -s -f "http://localhost:${DASHBOARDS_PORT:-5601}/api/status" &>/dev/null; then
+        echo -e "  ${ICON_CHECK} OpenSearch Dashboards is already running on port ${DASHBOARDS_PORT:-5601}!"
+        dash_ready=true
     fi
 
-    # Wait for cluster readiness
-    echo -e "  ${ICON_INFO} Waiting for cluster health status (${BOLD}yellow/green${RESET})..."
+    # If both are running, nothing to launch
+    if [[ "${os_ready}" == "false" || "${dash_ready}" == "false" ]]; then
+        # Launch using compose if available
+        if [[ -n "${COMPOSE_CMD}" ]] && [[ -f "${REPO_ROOT}/compose.yaml" ]]; then
+            echo -e "  ${ICON_INFO} Launching services via ${COMPOSE_CMD}..."
+            ${COMPOSE_CMD} up -d >/tmp/compose-up.log 2>&1 || true
+        else
+            # Ensure custom bridge network exists
+            ${CONTAINER_RUNTIME} network inspect opensearch-net >/dev/null 2>&1 || \
+                ${CONTAINER_RUNTIME} network create opensearch-net >/dev/null 2>&1 || true
+
+            # Launch OpenSearch if not ready
+            if [[ "${os_ready}" == "false" ]]; then
+                ${CONTAINER_RUNTIME} rm -f opensearch-node >/dev/null 2>&1 || true
+                ${CONTAINER_RUNTIME} run -d --name opensearch-node \
+                    --network opensearch-net \
+                    -p ${OPENSEARCH_PORT:-9200}:9200 -p 9600:9600 \
+                    -e "discovery.type=single-node" \
+                    -e "OPENSEARCH_JAVA_OPTS=-Xms${JVM_HEAP:-512m} -Xmx${JVM_HEAP:-512m}" \
+                    -e "plugins.security.disabled=true" \
+                    -e "DISABLE_INSTALL_DEMO_CONFIG=true" \
+                    -e "bootstrap.memory_lock=false" \
+                    docker.io/opensearchproject/opensearch:2.18.0 >/dev/null 2>&1 &
+                spin_wait $! "Starting OpenSearch node container..."
+            fi
+
+            # Launch OpenSearch Dashboards if not ready
+            if [[ "${dash_ready}" == "false" ]]; then
+                ${CONTAINER_RUNTIME} rm -f opensearch-dashboards >/dev/null 2>&1 || true
+                ${CONTAINER_RUNTIME} run -d --name opensearch-dashboards \
+                    --network opensearch-net \
+                    -p ${DASHBOARDS_PORT:-5601}:5601 \
+                    -e "OPENSEARCH_HOSTS=http://opensearch-node:9200" \
+                    -e "DISABLE_SECURITY_DASHBOARDS_PLUGIN=true" \
+                    -e "SERVER_HOST=0.0.0.0" \
+                    docker.io/opensearchproject/opensearch-dashboards:2.18.0 >/dev/null 2>&1 &
+                spin_wait $! "Starting OpenSearch Dashboards container..."
+            fi
+        fi
+    fi
+
+    # Wait for OpenSearch cluster readiness
+    echo -e "  ${ICON_INFO} Waiting for OpenSearch cluster health status (${BOLD}yellow/green${RESET})..."
     MAX_WAIT=45
     WAIT_COUNT=0
     READY=false
@@ -370,14 +417,37 @@ start_cluster() {
         fi
         sleep 2
         WAIT_COUNT=$((WAIT_COUNT + 2))
-        printf "  ${C_GRAY}• Initializing plugins... (%ds/${MAX_WAIT}s)\r${RESET}" "${WAIT_COUNT}"
+        printf "  ${C_GRAY}• Initializing OpenSearch... (%ds/${MAX_WAIT}s)\r${RESET}" "${WAIT_COUNT}"
     done
     printf "\r\033[K"
 
     if [[ "${READY}" == "true" ]]; then
         echo -e "  ${ICON_CHECK} ${C_GREEN}OpenSearch cluster is ONLINE!${RESET} (Status: ${STATUS})"
     else
-        echo -e "  ${ICON_WARN} Cluster is taking longer than expected. Continuing with startup check..."
+        echo -e "  ${ICON_WARN} OpenSearch is taking longer than expected. Continuing..."
+    fi
+
+    # Wait for Dashboards readiness
+    echo -e "  ${ICON_INFO} Verifying OpenSearch Dashboards on port ${DASHBOARDS_PORT:-5601}..."
+    DASH_WAIT=30
+    DASH_COUNT=0
+    DASH_READY=false
+    while [[ ${DASH_COUNT} -lt ${DASH_WAIT} ]]; do
+        if curl -s -f "http://localhost:${DASHBOARDS_PORT:-5601}/api/status" &>/dev/null || \
+           curl -s "http://localhost:${DASHBOARDS_PORT:-5601}" 2>/dev/null | grep -iq "OpenSearch"; then
+            DASH_READY=true
+            break
+        fi
+        sleep 2
+        DASH_COUNT=$((DASH_COUNT + 2))
+        printf "  ${C_GRAY}• Initializing Dashboards... (%ds/${DASH_WAIT}s)\r${RESET}" "${DASH_COUNT}"
+    done
+    printf "\r\033[K"
+
+    if [[ "${DASH_READY}" == "true" ]]; then
+        echo -e "  ${ICON_CHECK} ${C_GREEN}OpenSearch Dashboards is ONLINE at http://localhost:${DASHBOARDS_PORT:-5601}!${RESET}"
+    else
+        echo -e "  ${ICON_INFO} Dashboards container starting in background (will be accessible at http://localhost:${DASHBOARDS_PORT:-5601})"
     fi
 }
 

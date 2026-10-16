@@ -8,8 +8,8 @@ services:
       - cluster.name=gcp-audit-security-lab
       - node.name=opensearch-lab-01
       - discovery.type=single-node
-      - bootstrap.memory_lock=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - bootstrap.memory_lock=${BOOTSTRAP_MEMORY_LOCK:-false}
+      - "OPENSEARCH_JAVA_OPTS=${OPENSEARCH_JAVA_OPTS:--Xms512m -Xmx512m}"
       - plugins.security.disabled=true
       - "DISABLE_INSTALL_DEMO_CONFIG=true"
     ulimits:
@@ -22,7 +22,7 @@ services:
     volumes:
       - opensearch-data:/usr/share/opensearch/data
     ports:
-      - "9200:9200"
+      - "${OPENSEARCH_PORT:-9200}:9200"
       - "9600:9600"
     networks:
       - opensearch-net
@@ -37,7 +37,7 @@ services:
     image: docker.io/opensearchproject/opensearch-dashboards:2.18.0
     container_name: opensearch-dashboards
     ports:
-      - "5601:5601"
+      - "${OPENSEARCH_DASHBOARDS_PORT:-5601}:5601"
     environment:
       - 'OPENSEARCH_HOSTS=["http://opensearch:9200"]'
       - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
@@ -45,8 +45,7 @@ services:
     networks:
       - opensearch-net
     depends_on:
-      opensearch:
-        condition: service_healthy
+      - opensearch
     healthcheck:
       test: ["CMD-SHELL", "curl -s -f http://localhost:5601/api/status || exit 1"]
       interval: 10s
