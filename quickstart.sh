@@ -132,19 +132,35 @@ prompt_user() {
 check_dependencies() {
     print_step "1" "6" "Checking System & Container Runtime"
 
-    # Detect package manager
+    # Detect operating system platform and distribution
+    DISTRO_NAME="Linux"
+    if [[ -f /etc/os-release ]]; then
+        # shellcheck disable=SC1091
+        source /etc/os-release
+        DISTRO_NAME="${NAME:-${PRETTY_NAME:-Linux}}"
+    elif [[ "$(uname -s)" == "Darwin" ]]; then
+        DISTRO_NAME="macOS"
+    fi
+
+    # Detect package manager (Fedora 41+ uses dnf5, Fedora 22-40 uses dnf, RHEL uses dnf/yum)
     PKG_MGR=""
-    if command -v apt-get &>/dev/null; then
-        PKG_MGR="apt"
+    if command -v dnf5 &>/dev/null; then
+        PKG_MGR="dnf5"
     elif command -v dnf &>/dev/null; then
         PKG_MGR="dnf"
     elif command -v yum &>/dev/null; then
         PKG_MGR="yum"
+    elif command -v apt-get &>/dev/null; then
+        PKG_MGR="apt"
     elif command -v brew &>/dev/null; then
         PKG_MGR="brew"
     elif command -v pacman &>/dev/null; then
         PKG_MGR="pacman"
+    elif command -v zypper &>/dev/null; then
+        PKG_MGR="zypper"
     fi
+
+    echo -e "  ${ICON_CHECK} Platform detected: ${C_GREEN}${DISTRO_NAME}${RESET} ($(uname -m))"
 
     # 1. Check Python 3
     if command -v python3 &>/dev/null; then
@@ -157,12 +173,16 @@ check_dependencies() {
         PYTHON_BIN="python"
     else
         echo -e "  ${ICON_WARN} Python 3 not found. Attempting automatic installation..."
-        if [[ "${PKG_MGR}" == "apt" ]]; then
+        if [[ "${PKG_MGR}" == "dnf" || "${PKG_MGR}" == "dnf5" || "${PKG_MGR}" == "yum" ]]; then
+            sudo ${PKG_MGR} install -y python3 python3-pip
+        elif [[ "${PKG_MGR}" == "apt" ]]; then
             sudo apt-get update -y && sudo apt-get install -y python3 python3-pip
-        elif [[ "${PKG_MGR}" == "dnf" ]]; then
-            sudo dnf install -y python3 python3-pip
         elif [[ "${PKG_MGR}" == "brew" ]]; then
             brew install python
+        elif [[ "${PKG_MGR}" == "pacman" ]]; then
+            sudo pacman -Sy --noconfirm python python-pip
+        elif [[ "${PKG_MGR}" == "zypper" ]]; then
+            sudo zypper install -y python3 python3-pip
         else
             echo -e "  ${ICON_CROSS} ${C_RED}Error: Please install Python 3.9+ to continue.${RESET}"
             exit 1
@@ -175,12 +195,16 @@ check_dependencies() {
         echo -e "  ${ICON_CHECK} cURL detected: ${C_GREEN}$(curl --version | head -n 1 | awk '{print $2}')${RESET}"
     else
         echo -e "  ${ICON_WARN} Installing curl..."
-        if [[ "${PKG_MGR}" == "apt" ]]; then
+        if [[ "${PKG_MGR}" == "dnf" || "${PKG_MGR}" == "dnf5" || "${PKG_MGR}" == "yum" ]]; then
+            sudo ${PKG_MGR} install -y curl
+        elif [[ "${PKG_MGR}" == "apt" ]]; then
             sudo apt-get install -y curl
-        elif [[ "${PKG_MGR}" == "dnf" ]]; then
-            sudo dnf install -y curl
         elif [[ "${PKG_MGR}" == "brew" ]]; then
             brew install curl
+        elif [[ "${PKG_MGR}" == "pacman" ]]; then
+            sudo pacman -Sy --noconfirm curl
+        elif [[ "${PKG_MGR}" == "zypper" ]]; then
+            sudo zypper install -y curl
         fi
     fi
 
@@ -195,12 +219,18 @@ check_dependencies() {
         if command -v podman-compose &>/dev/null; then
             COMPOSE_CMD="podman-compose"
             echo -e "  ${ICON_CHECK} podman-compose detected"
+        elif docker compose version &>/dev/null 2>&1; then
+            COMPOSE_CMD="docker compose"
+            echo -e "  ${ICON_CHECK} Docker Compose plugin detected"
+        elif podman compose version &>/dev/null 2>&1; then
+            COMPOSE_CMD="podman compose"
+            echo -e "  ${ICON_CHECK} podman compose provider detected"
         fi
     elif command -v docker &>/dev/null; then
         CONTAINER_RUNTIME="docker"
         DOCK_VER=$(docker --version | awk '{print $3}' | tr -d ',')
         echo -e "  ${ICON_CHECK} Docker runtime detected: ${C_GREEN}v${DOCK_VER}${RESET}"
-        if docker compose version &>/dev/null; then
+        if docker compose version &>/dev/null 2>&1; then
             COMPOSE_CMD="docker compose"
             echo -e "  ${ICON_CHECK} Docker Compose plugin detected"
         elif command -v docker-compose &>/dev/null; then
@@ -216,12 +246,16 @@ check_dependencies() {
         prompt_user "Install Podman automatically?" "y" INSTALL_PODMAN
         if [[ "${INSTALL_PODMAN}" =~ ^[Yy]$ ]]; then
             echo -e "  ${ICON_INFO} Installing Podman and Podman Compose via ${PKG_MGR}..."
-            if [[ "${PKG_MGR}" == "apt" ]]; then
+            if [[ "${PKG_MGR}" == "dnf" || "${PKG_MGR}" == "dnf5" || "${PKG_MGR}" == "yum" ]]; then
+                sudo ${PKG_MGR} install -y podman podman-compose
+            elif [[ "${PKG_MGR}" == "apt" ]]; then
                 sudo apt-get update -y && sudo apt-get install -y podman podman-compose
-            elif [[ "${PKG_MGR}" == "dnf" ]]; then
-                sudo dnf install -y podman podman-compose
             elif [[ "${PKG_MGR}" == "brew" ]]; then
                 brew install podman podman-compose
+            elif [[ "${PKG_MGR}" == "pacman" ]]; then
+                sudo pacman -Sy --noconfirm podman podman-compose
+            elif [[ "${PKG_MGR}" == "zypper" ]]; then
+                sudo zypper install -y podman podman-compose
             else
                 echo -e "  ${ICON_CROSS} Please install Podman manually: https://podman.io"
                 exit 1
@@ -235,20 +269,102 @@ check_dependencies() {
         fi
     fi
 
+    # Ensure compose capability is available (especially on Fedora where Podman is preinstalled without podman-compose)
+    if [[ -n "${CONTAINER_RUNTIME}" && -z "${COMPOSE_CMD}" ]]; then
+        echo -e "  ${ICON_WARN} ${CONTAINER_RUNTIME} detected, but compose tool is missing."
+        if [[ "${CONTAINER_RUNTIME}" == "podman" ]]; then
+            echo -e "  ${ICON_INFO} Installing podman-compose for multi-container orchestration..."
+            if [[ "${PKG_MGR}" == "dnf" || "${PKG_MGR}" == "dnf5" || "${PKG_MGR}" == "yum" ]]; then
+                sudo ${PKG_MGR} install -y podman-compose >/dev/null 2>&1 || true
+            elif [[ "${PKG_MGR}" == "apt" ]]; then
+                sudo apt-get update -y >/dev/null 2>&1 && sudo apt-get install -y podman-compose >/dev/null 2>&1 || true
+            elif [[ "${PKG_MGR}" == "brew" ]]; then
+                brew install podman-compose >/dev/null 2>&1 || true
+            elif [[ "${PKG_MGR}" == "pacman" ]]; then
+                sudo pacman -Sy --noconfirm podman-compose >/dev/null 2>&1 || true
+            fi
+
+            # Fallback to pip if package manager did not provide it
+            if ! command -v podman-compose &>/dev/null; then
+                if command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
+                    PIP_BIN=$(command -v pip3 || command -v pip)
+                    "${PIP_BIN}" install --user --break-system-packages podman-compose >/dev/null 2>&1 || \
+                        "${PIP_BIN}" install --user podman-compose >/dev/null 2>&1 || true
+                fi
+            fi
+
+            if command -v podman-compose &>/dev/null; then
+                COMPOSE_CMD="podman-compose"
+                echo -e "  ${ICON_CHECK} ${C_GREEN}podman-compose installed successfully!${RESET}"
+            elif podman compose version &>/dev/null 2>&1; then
+                COMPOSE_CMD="podman compose"
+                echo -e "  ${ICON_CHECK} ${C_GREEN}podman compose provider is available!${RESET}"
+            else
+                echo -e "  ${ICON_WARN} podman-compose not available; will use native podman commands."
+            fi
+        elif [[ "${CONTAINER_RUNTIME}" == "docker" ]]; then
+            if [[ "${PKG_MGR}" == "dnf" || "${PKG_MGR}" == "dnf5" || "${PKG_MGR}" == "yum" ]]; then
+                sudo ${PKG_MGR} install -y docker-compose-plugin >/dev/null 2>&1 || true
+            elif [[ "${PKG_MGR}" == "apt" ]]; then
+                sudo apt-get install -y docker-compose-plugin >/dev/null 2>&1 || true
+            fi
+            if docker compose version &>/dev/null 2>&1; then
+                COMPOSE_CMD="docker compose"
+                echo -e "  ${ICON_CHECK} ${C_GREEN}docker compose plugin installed!${RESET}"
+            fi
+        fi
+    fi
+
     # 4. Check kernel mmap count for OpenSearch
     if [[ "$(uname -s)" == "Linux" ]]; then
-        MMAP_VAL=$(sysctl -n vm.max_map_count 2>/dev/null || cat /proc/sys/vm/max_map_count 2>/dev/null || echo "0")
+        SYSCTL_BIN=$(command -v sysctl 2>/dev/null || echo "")
+        if [[ -z "${SYSCTL_BIN}" && -x /usr/sbin/sysctl ]]; then
+            SYSCTL_BIN="/usr/sbin/sysctl"
+        elif [[ -z "${SYSCTL_BIN}" && -x /sbin/sysctl ]]; then
+            SYSCTL_BIN="/sbin/sysctl"
+        fi
+
+        MMAP_VAL=$(${SYSCTL_BIN:-sysctl} -n vm.max_map_count 2>/dev/null || cat /proc/sys/vm/max_map_count 2>/dev/null || echo "0")
         if [[ "${MMAP_VAL}" -lt 262144 ]]; then
             echo -e "  ${ICON_WARN} vm.max_map_count is ${MMAP_VAL} (OpenSearch requires >= 262144)."
             echo -e "  ${ICON_INFO} Adjusting vm.max_map_count via sudo..."
-            sudo sysctl -w vm.max_map_count=262144 >/dev/null 2>&1 || true
+            if [[ -n "${SYSCTL_BIN}" ]]; then
+                sudo "${SYSCTL_BIN}" -w vm.max_map_count=262144 >/dev/null 2>&1 || true
+            else
+                echo 262144 | sudo tee /proc/sys/vm/max_map_count >/dev/null 2>&1 || true
+            fi
+            # Persist for Fedora / RHEL / systemd distributions
+            if [[ -d /etc/sysctl.d ]] && sudo -n true 2>/dev/null; then
+                echo "vm.max_map_count=262144" | sudo tee /etc/sysctl.d/99-opensearch.conf >/dev/null 2>&1 || true
+            fi
             echo -e "  ${ICON_CHECK} vm.max_map_count updated to ${C_GREEN}262144${RESET}"
         else
             echo -e "  ${ICON_CHECK} Kernel vm.max_map_count is optimal: ${C_GREEN}${MMAP_VAL}${RESET}"
         fi
     fi
 
-    # 5. Check System RAM and determine safe JVM heap default
+    # 5. Check Rootless Podman user namespace & SELinux (Fedora / RHEL)
+    if [[ "${CONTAINER_RUNTIME}" == "podman" && "$(uname -s)" == "Linux" ]]; then
+        if [[ "$(id -u)" -ne 0 ]]; then
+            CURRENT_USER="$(whoami 2>/dev/null || id -un 2>/dev/null || echo "")"
+            if [[ -n "${CURRENT_USER}" && -f /etc/subuid ]]; then
+                if ! grep -q "^${CURRENT_USER}:" /etc/subuid 2>/dev/null; then
+                    echo -e "  ${ICON_WARN} User '${CURRENT_USER}' missing in /etc/subuid for rootless Podman."
+                    echo -e "  ${ICON_INFO} Configuring subuid & subgid ranges..."
+                    sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "${CURRENT_USER}" >/dev/null 2>&1 || true
+                fi
+            fi
+        fi
+
+        if command -v getenforce &>/dev/null; then
+            SE_STATUS=$(getenforce 2>/dev/null || echo "Disabled")
+            if [[ "${SE_STATUS}" == "Enforcing" ]]; then
+                echo -e "  ${ICON_CHECK} SELinux status: ${C_GREEN}Enforcing${RESET} (container isolation active)"
+            fi
+        fi
+    fi
+
+    # 6. Check System RAM and determine safe JVM heap default
     DEFAULT_HEAP="1g"
     if [[ -f /proc/meminfo ]]; then
         TOTAL_RAM_KB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}')
@@ -306,7 +422,7 @@ collect_user_inputs() {
 # Auto-generated by quickstart.sh on $(date -u +"%Y-%m-%d %H:%M:%SZ")
 LAB_MODE=${LAB_MODE}
 CONTAINER_RUNTIME=${CONTAINER_RUNTIME}
-COMPOSE_COMMAND=${COMPOSE_CMD}
+COMPOSE_COMMAND=${COMPOSE_CMD:-podman-compose}
 GCP_PROJECT_ID=${GCP_PROJECT_ID}
 OPENSEARCH_VERSION=2.18.0
 OPENSEARCH_DASHBOARDS_VERSION=2.18.0

@@ -35,15 +35,18 @@ This document outlines the hardware, operating system, and software prerequisite
 ### Python Environment
 * **Python**: Version 3.9 or newer.
   * Verify: `python3 --version` or `python --version`
-* **Python Packages** (for tests and utilities):
-  * `requests`, `pytest`, `pyyaml`
-  * Install via:
+* **Python Packages & Testing Framework**:
+  * On **Fedora / RHEL**:
     ```bash
-    pip3 install -r - <<EOF
-    requests>=2.28.0
-    pytest>=7.0.0
-    pyyaml>=6.0
-    EOF
+    sudo dnf install -y python3 python3-pip python3-pytest python3-requests python3-pyyaml
+    ```
+  * On **Ubuntu / Debian**:
+    ```bash
+    sudo apt-get install -y python3 python3-pip python3-pytest
+    ```
+  * Via `pip`:
+    ```bash
+    pip3 install requests pytest pyyaml
     ```
 
 ### Command-Line Utilities

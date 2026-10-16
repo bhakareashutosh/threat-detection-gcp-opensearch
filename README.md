@@ -259,9 +259,19 @@ Podman is the preferred container runtime for this lab as it offers daemonless, 
 
 ### Installation
 
+* **Fedora / RHEL / Rocky / AlmaLinux**:
+  ```bash
+  # Fedora 39, 40, 41+ (DNF / DNF5):
+  sudo dnf install -y podman podman-compose python3 python3-pip curl
+
+  # Set and persist OpenSearch kernel requirement:
+  sudo sysctl -w vm.max_map_count=262144
+  echo "vm.max_map_count=262144" | sudo tee /etc/sysctl.d/99-opensearch.conf
+  ```
 * **Ubuntu / Debian**:
   ```bash
-  sudo apt-get update && sudo apt-get install -y podman podman-compose
+  sudo apt-get update && sudo apt-get install -y podman podman-compose python3 python3-pip curl
+  sudo sysctl -w vm.max_map_count=262144
   ```
 * **macOS (Homebrew)**:
   ```bash
@@ -270,7 +280,7 @@ Podman is the preferred container runtime for this lab as it offers daemonless, 
   podman machine start
   ```
 * **Windows (WSL2)**:
-  Inside your Ubuntu WSL2 terminal, install `podman` and `podman-compose` via `apt-get`. Ensure `vm.max_map_count` is set:
+  Inside your Ubuntu/Debian/Fedora WSL2 terminal, install `podman` and `podman-compose`. Ensure `vm.max_map_count` is set:
   ```bash
   sudo sysctl -w vm.max_map_count=262144
   ```

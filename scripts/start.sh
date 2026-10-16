@@ -25,12 +25,17 @@ COMPOSE_CMD="${COMPOSE_COMMAND:-podman-compose}"
 if ! command -v ${COMPOSE_CMD%% *} &>/dev/null; then
     if command -v podman-compose &>/dev/null; then
         COMPOSE_CMD="podman-compose"
+    elif docker compose version &>/dev/null 2>&1; then
+        COMPOSE_CMD="docker compose"
+    elif podman compose version &>/dev/null 2>&1; then
+        COMPOSE_CMD="podman compose"
     elif command -v docker-compose &>/dev/null; then
         COMPOSE_CMD="docker-compose"
-    elif docker compose version &>/dev/null; then
-        COMPOSE_CMD="docker compose"
     else
         echo "[-] Error: No working compose command found."
+        echo "    On Fedora / RHEL:   sudo dnf install -y podman-compose"
+        echo "    On Ubuntu / Debian: sudo apt-get install -y podman-compose"
+        echo "    Or via Python pip:  pip install --user podman-compose"
         exit 1
     fi
 fi

@@ -21,10 +21,12 @@ COMPOSE_CMD="${COMPOSE_COMMAND:-podman-compose}"
 if ! command -v ${COMPOSE_CMD%% *} &>/dev/null; then
     if command -v podman-compose &>/dev/null; then
         COMPOSE_CMD="podman-compose"
+    elif docker compose version &>/dev/null 2>&1; then
+        COMPOSE_CMD="docker compose"
+    elif podman compose version &>/dev/null 2>&1; then
+        COMPOSE_CMD="podman compose"
     elif command -v docker-compose &>/dev/null; then
         COMPOSE_CMD="docker-compose"
-    elif docker compose version &>/dev/null; then
-        COMPOSE_CMD="docker compose"
     fi
 fi
 

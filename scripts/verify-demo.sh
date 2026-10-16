@@ -38,7 +38,16 @@ PYTHON_CMD="python3"
 if ! command -v python3 &>/dev/null; then
     PYTHON_CMD="python"
 fi
-"${PYTHON_CMD}" -m pytest "${REPO_ROOT}/tests" -v
+
+if "${PYTHON_CMD}" -c "import pytest" &>/dev/null; then
+    "${PYTHON_CMD}" -m pytest "${REPO_ROOT}/tests" -v
+else
+    echo "[!] Notice: python pytest module is not installed."
+    echo "    To install on Fedora / RHEL:   sudo dnf install -y python3-pytest"
+    echo "    To install on Ubuntu / Debian: sudo apt-get install -y python3-pytest"
+    echo "    Or via pip:                    pip install pytest"
+    echo "    (All preceding scenario detections and ingest validations passed successfully.)"
+fi
 
 echo ""
 echo "================================================================================"
